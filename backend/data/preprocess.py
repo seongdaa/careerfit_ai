@@ -3,7 +3,7 @@
 # 데이터 전처리 파이프라인
 
 # 실행: backend/ 폴더에서 python data/preprocess.py
-
+print("🔥 preprocess 시작됨")
 import pandas as pd
 
 import sqlite3
@@ -11,7 +11,22 @@ import sqlite3
 import json
 
 import os
+from datetime import date
 
+SKILL_NORMALIZATION = {
+    "python": "Python",
+    "sql": "SQL",
+    "ai": "AI",
+    "ml": "머신러닝",
+    "machine learning": "머신러닝",
+    "deep learning": "딥러닝",
+    "r": "R",
+    "js": "JavaScript",
+    "javascript": "JavaScript",
+    "tableau": "Tableau",
+    "powerbi": "Power BI",
+    "power bi": "Power BI",
+}
 
 
 # ─── 1. 파일 경로 설정 
@@ -58,36 +73,7 @@ def load_data(filepath: str) -> pd.DataFrame:
 
 
 
-# 실행 테스트 / 결측치 확인 
-
-if __name__ == "__main__":
-
-    # 1. 읽기
-
-    df_jobs = load_data(JOBS_CSV)
-
-    # 2. 결측치 확인
-
-    df_jobs = check_missing(df_jobs)
-
-    # 3. 결측치 처리
-
-    df_jobs = handle_missing(df_jobs)
-
-    # 4. 중복 제거
-
-    df_jobs = remove_duplicates(df_jobs)
-
-     df_jobs = standardize_skills(df_jobs)
-    save_to_sqlite(df_jobs, DB_PATH)  
-    query_sqlite(DB_PATH)
-    convert_to_rag_documents(df_jobs)  
-    save_rag_documents(rag_docs, RAG_JSON)   
-
-    print(f"\n✅ 전처리 완료: 최종 {len(df_jobs)}행")
-
-
- def check_missing(df: pd.DataFrame) -> pd.DataFrame:
+def check_missing(df: pd.DataFrame) -> pd.DataFrame:
 
     """
 
@@ -187,37 +173,6 @@ def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-
-# 표준화 함수 
-
-    SKILL_NORMALIZATION = {
-
-    "python": "Python",
-
-    "sql": "SQL",
-
-    "ai": "AI",
-
-    "ml": "머신러닝",
-
-    "machine learning": "머신러닝",
-
-    "deep learning": "딥러닝",
-
-    "r": "R",         # 대소문자 주의
-
-    "js": "JavaScript",
-
-    "javascript": "JavaScript",
-
-    "tableau": "Tableau",
-
-    "powerbi": "Power BI",
-
-    "power bi": "Power BI",
-
-}
-
 def normalize_skills(skills_str: str) -> str:
 
     """
@@ -275,8 +230,6 @@ def standardize_skills(df: pd.DataFrame) -> pd.DataFrame:
     print(df[["title", "required_skills"]].head(3).to_string())
 
     return df
-
-    import sqlite3
 
 def save_to_sqlite(df: pd.DataFrame, db_path: str) -> None:
     """
@@ -359,6 +312,9 @@ def convert_to_rag_documents(df: pd.DataFrame) -> list:
             f"업무 내용: {row.get('description', '정보 없음')}"
         )
 
+        deadline = str(row.get("deadline", ""))
+        company = str(row.get("company", ""))
+
         # metadata: 검색 결과를 필터링하거나 출처를 표시할 때 사용합니다
         metadata = {
             "id": str(row.get("id", "")),
@@ -366,7 +322,10 @@ def convert_to_rag_documents(df: pd.DataFrame) -> list:
             "title": str(row.get("title", "")),
             "job_type": str(row.get("job_type", "")),
             "deadline": str(row.get("deadline", "")),
-            "source": "jobs.csv"
+            "source": "jobs.csv",
+            "deadline_month": deadline[5:7] if len(deadline) >= 7 and deadline[4] == "-" else "",
+            "is_startup": "true" if "스타트업" in company else "false",
+            "first_saved_date": date.today().isoformat()
         }
 
         documents.append({
@@ -392,3 +351,22 @@ def save_rag_documents(documents: list, json_path: str) -> None:
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(documents, f, ensure_ascii=False, indent=2)
     print(f"\n   ✅ RAG 문서 JSON 저장: {json_path}")
+
+
+if __name__ == "__main__":
+
+    df_jobs = load_data(JOBS_CSV)
+
+    df_jobs = check_missing(df_jobs)
+    df_jobs = handle_missing(df_jobs)
+    df_jobs = remove_duplicates(df_jobs)
+    df_jobs = standardize_skills(df_jobs)
+
+    save_to_sqlite(df_jobs, DB_PATH)
+    query_sqlite(DB_PATH)
+
+    rag_docs = convert_to_rag_documents(df_jobs)
+    save_rag_documents(rag_docs, RAG_JSON)
+
+    print(f"\n완료")    
+    
